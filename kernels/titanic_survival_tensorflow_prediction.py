@@ -195,7 +195,7 @@ with tf.Session() as sess:
                     print("Epoch: {}/{}".format(e + 1, epochs), "Validation Loss: {:.4f}".format(val_loss), "Validation Acc: {:.4f}".format(val_acc))
                 
     print("Training end with validation accuracy: ", val_acc, " trainning accuracy: ", train_acc)
-    saver.save(sess, "../tensorflow_data/titanic.ckpt")
+    saver.save(sess, "../data/titanic.ckpt")
 # ========== End Trainning of Neural Network ==========
 # ==================== Algorythm ====================
 
@@ -205,7 +205,7 @@ with tf.Session() as sess:
 model=build_neural_network()
 restorer=tf.train.Saver()
 with tf.Session() as sess:
-    restorer.restore(sess,"../tensorflow_data/titanic.ckpt")
+    restorer.restore(sess,"../data/titanic.ckpt")
     feed={model.inputs:test_data, model.is_training:False}
     test_predict=sess.run(model.predicted,feed_dict=feed)
 test_predict=pd.DataFrame(np.float_(test_predict))
