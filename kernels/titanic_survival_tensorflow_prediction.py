@@ -14,8 +14,57 @@ from sklearn.model_selection import train_test_split
 data_directory="../data/"
 train_data = pd.read_csv(data_directory+"train.csv")
 test_data = pd.read_csv(data_directory+"test.csv")
+data = train_data.append(test_data)
 test_passenger_id=test_data["PassengerId"]
 # ========== Insert Data Files ==========
+
+data['HasCabin'] = data["Cabin"].apply(lambda x: 0 if type(x) == float else 1)
+data['FamilySize'] = data['Parch'] + data['SibSp']
+
+data['Last_Name'] = data['Name'].apply(lambda x: str.split(x, ",")[0])
+data['Fare'].fillna(data['Fare'].mean(), inplace=True)
+DEFAULT_SURVIVAL_VALUE = 0.5
+data['Family_Survival'] = DEFAULT_SURVIVAL_VALUE
+
+
+for grp, grp_df in data[['Survived','Name', 'Last_Name', 'Fare', 'Ticket', 'PassengerId',
+                           'SibSp', 'Parch', 'Age', 'Cabin']].groupby(['Last_Name', 'Fare']):   
+    if (len(grp_df) != 1):
+        for ind, row in grp_df.iterrows():
+            smax = grp_df.drop(ind)['Survived'].max()
+            smin = grp_df.drop(ind)['Survived'].min()
+            passID = row['PassengerId']
+            if (smax == 1.0):
+                data.loc[data['PassengerId'] == passID, 'Family_Survival'] = 1
+            elif (smin==0.0):
+                data.loc[data['PassengerId'] == passID, 'Family_Survival'] = 0
+print("Number of passengers with family survival information:", 
+      data.loc[data['Family_Survival']!=0.5].shape[0])
+
+
+
+for _, grp_df in data.groupby('Ticket'):
+    if (len(grp_df) != 1):
+        for ind, row in grp_df.iterrows():
+            if (row['Family_Survival'] == 0) | (row['Family_Survival']== 0.5):
+                smax = grp_df.drop(ind)['Survived'].max()
+                smin = grp_df.drop(ind)['Survived'].min()
+                passID = row['PassengerId']
+                if (smax == 1.0):
+                    data.loc[data['PassengerId'] == passID, 'Family_Survival'] = 1
+                elif (smin==0.0):
+                    data.loc[data['PassengerId'] == passID, 'Family_Survival'] = 0                      
+print("Number of passenger with family/group survival information: " 
+      +str(data[data['Family_Survival']!=0.5].shape[0]))
+train_data['Family_Survival'] = data['Family_Survival'][:891]
+test_data['Family_Survival'] = data['Family_Survival'][891:]
+train_data['HasCabin'] = data['HasCabin'][:891]
+test_data['HasCabin'] = data['HasCabin'][891:]
+train_data['FamilySize'] = data['FamilySize'][:891]
+test_data['FamilySize'] = data['FamilySize'][891:]
+
+
+
 
 
 
@@ -29,15 +78,11 @@ def clean_concerned(dataframe, columns):
 
 
 # ========== Editing and Normalizing Data ==========
-not_concerned_columns = ["PassengerId","Name", "Ticket", "Cabin", "Embarked"]
-train_data = drop_not_concerned(train_data, not_concerned_columns)
-test_data = drop_not_concerned(test_data, not_concerned_columns)
-concerned_columns = ["Survived","Age", "SibSp", "Parch", "Sex", "Fare", "Pclass"]
+concerned_columns = ["Survived","Age", "Sex", "Fare", "Pclass", 'Family_Survival', 'FamilySize']
 train_data = clean_concerned(train_data, concerned_columns)
 concerned_columns.remove("Survived")
 test_data = clean_concerned(test_data, concerned_columns)
-train_data['Family_Size'] = train_data['Parch'] + train_data['SibSp']
-test_data['Family_Size'] = test_data['Parch'] + test_data['SibSp']
+
 
 
 # ========== Binarizing Sex field ==========
@@ -86,6 +131,10 @@ figure(num=None, figsize=(8, 6), dpi=80, facecolor='w', edgecolor='k')
 g = sns.heatmap(train_data.corr(),annot=True, fmt = ".2f", cmap = "coolwarm")
 plt.show()
 # ========== Ploting a heatmap for relations ==========
+
+
+
+
 
 
 
@@ -152,9 +201,9 @@ def get_batch(data_x,data_y,batch_size=32):
 
 
 
-epochs = 150
+epochs = 50
 train_collect = 50
-train_print=train_collect*2
+train_print=train_collect*10
 
 learning_rate_value = 0.001
 batch_size=16
@@ -195,9 +244,25 @@ with tf.Session() as sess:
                     print("Epoch: {}/{}".format(e + 1, epochs), "Validation Loss: {:.4f}".format(val_loss), "Validation Acc: {:.4f}".format(val_acc))
                 
     print("Training end with validation accuracy: ", val_acc, " trainning accuracy: ", train_acc)
-    saver.save(sess, "../data/titanic.ckpt")
+    saver.save(sess, "../tensorflow_data/titanic.ckpt")
 # ========== End Trainning of Neural Network ==========
 # ==================== Algorythm ====================
+
+
+fig, axes = plt.subplots(2, sharex=True, figsize=(12, 8))
+fig.suptitle('Training Results')
+
+axes[0].set_ylabel("Accuracy", fontsize=14)
+axes[1].set_xlabel("Epoch", fontsize=14)
+axes[0].plot(train_acc_collect)
+axes[0].plot(valid_acc_collect)
+
+axes[1].set_ylabel("Loss", fontsize=14)
+axes[1].set_xlabel("Epoch", fontsize=14)
+axes[1].plot(train_loss_collect)
+axes[1].plot(valid_loss_collect)
+plt.show()
+
 
 
 # ==================== Evaluation ====================
@@ -205,7 +270,7 @@ with tf.Session() as sess:
 model=build_neural_network()
 restorer=tf.train.Saver()
 with tf.Session() as sess:
-    restorer.restore(sess,"../data/titanic.ckpt")
+    restorer.restore(sess,"../tensorflow_data/titanic.ckpt")
     feed={model.inputs:test_data, model.is_training:False}
     test_predict=sess.run(model.predicted,feed_dict=feed)
 test_predict=pd.DataFrame(np.float_(test_predict))
